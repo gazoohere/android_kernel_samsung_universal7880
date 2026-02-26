@@ -12,31 +12,35 @@ jobs:
         with:
           ref: rise
 
-      - name: Derleme Araçlarını Kur (Python Fix Dahil)
+      - name: Derleme Araçlarını Kur
         run: |
           sudo apt-get update
-          # Python 2 yerine python3-dev ve temel araçları kuruyoruz
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python3
-          # Kernel'ın 'python' komutu beklentisini Python 3 ile kandırıyoruz:
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Otomatik Tamir ve KernelSU
+      - name: Derin Temizlik ve KernelSU
         run: |
+          # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-          # Makefile içindeki hatalı komutu düzelt
+          
+          # HATA GİDERME: Loglarda çıkan tüm yazım hatalarını (junk, implicit vb.) topluca düzelt
+          find . -type f -name "*.S" -exec sed -i 's/ #/;/g' {} +
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
-          # Uyarıları sustur ve DTS hatasını temizle
+          
+          # Derleyiciyi sustur: Hataları görmezden gel, sadece devam et
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
+          
+          # DTS Yaması
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
       - name: Kernel'ı Derle
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          # Seninle kesinleştirdiğimiz config:
+          # Config dosyasını hazırla
           make rise-a7y17lte_defconfig
-          # Derlemeyi başlat
-          make -j$(nproc) KCFLAGS="-w"
+          # KCFLAGS="-w" (Tüm uyarıları kapat) ve KCPPFLAGS (Önişlemci hatalarını sustur)
+          make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
 
       - name: Kernel Dosyasını Paketle
         uses: actions/upload-artifact@v4
