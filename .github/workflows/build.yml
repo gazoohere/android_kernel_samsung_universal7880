@@ -1,45 +1,44 @@
 name: Focus RS Kernel Build (KernelSU)
 
 on:
-  workflow_dispatch: # Manuel başlatma butonu
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Kodları Çek
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          ref: rise  # Senin kullandığın 'rise' dalına odaklanıyoruz
 
       - name: Derleme Araçlarını Kur
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev
 
-      - name: KernelSU Entegre Et ve Hataları Otomatik Onar
+      - name: KernelSU ve Otomatik Onarımlar
         run: |
           # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # Daha önce bizi yoran Netfilter hatalarını temizle
+          # Uyarıları hataya dönüştürmeyi kapat (Netfilter için kritik)
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           
-          # DTS Hatalarını (common.dtsi eksikliği) bypass et
-          # Hatalı satırı tüm dts dosyalarından siliyoruz
+          # DTS Hatalarını bypass et (Kayıp dtsi dosyası)
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
       - name: Kernel'ı Derle
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          # Senin cihazının config dosyasını kullanıyoruz
+          # Doğru config dosyasını çağırıyoruz
           make exynos7880-a7y17lte_eur_open_defconfig
-          
-          # Derlemeyi başlat (Hız için tüm çekirdekleri kullan)
+          # KCFLAGS="-w" ile tüm gereksiz uyarıları susturuyoruz
           make -j$(nproc) KCFLAGS="-w"
 
       - name: Kernel Dosyasını Pakatle (Artifact)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Focus-RS-Kernel
           path: arch/arm64/boot/Image.gz-dtb
