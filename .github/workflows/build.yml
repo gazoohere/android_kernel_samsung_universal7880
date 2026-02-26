@@ -17,15 +17,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev
 
-      - name: Otomatik Cerrahi Müdahale ve KernelSU
+      - name: Otomatik Tamir ve Temizlik
         run: |
           # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # HATA 1: Makefile içindeki yazım hatasını düzeltiyoruz
+          # HATA 1: Makefile içindeki inatçı ccache referanslarını siliyoruz
+          find . -type f -name "Makefile" -exec sed -i 's/ccache //g' {} +
+          
+          # HATA 2: Yazım hatasını düzeltiyoruz (-implicit -> -Wimplicit)
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           
-          # HATA 2: Daha önce bizi yoran Netfilter/DTS hatalarını temizle
+          # HATA 3: Netfilter ve DTS yamaları
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
@@ -34,12 +37,14 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # Hangi config'in olduğunu bulup otomatik seçiyoruz
-          CONF=$(ls arch/arm64/configs/ | grep -i "eur_open" | head -n 1)
-          echo "Kullanılan Config: $CONF"
-          make $CONF
+          # Mevcut config dosyalarını listele (Loglarda görmek için)
+          ls arch/arm64/configs/
           
-          # Derlemeye başla
+          # Senin cihazın için en muhtemel config adını deniyoruz
+          # Not: Eğer hata verirse loglardan gerçek dosya adına bakacağız
+          make a7y17lte_eur_open_defconfig || make exynos7880-a7y17lte_eur_open_defconfig || make universal7880_defconfig
+          
+          # Derlemeyi başlat
           make -j$(nproc) KCFLAGS="-w"
 
       - name: Kernel Dosyasını Paketle
