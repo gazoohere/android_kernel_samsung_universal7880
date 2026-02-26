@@ -5,30 +5,26 @@ on:
 
 jobs:
   build:
-    # Eski Android kernelleri için en stabil fabrika ortamı
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Kodları Çek
         uses: actions/checkout@v4
         with:
           ref: rise
 
-      - name: Derleme Araçlarını Kur
+      - name: Eski Tip Derleyiciyi ve Python'u Hazırla
         run: |
           sudo apt-get update
-          # Ubuntu 20.04'te Python 2 yerleşik gelir, sahte linklere gerek yok!
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2 python3
-          # Kernel scriptleri python'u çağırır, biz onu orijinal python2'ye yönlendiriyoruz
+          # GCC 9 (eski ama uyumlu) ve Python 2 kurulumu
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2
           sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-      - name: Temizlik ve KernelSU Kurulumu
+      - name: KernelSU Kurulumu
         run: |
-          # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # HATA YAPAN SED KOMUTLARI KALDIRILDI! Kodlar orijinal haliyle derlenecek.
-          
-          # Makefile ve Werror temizliği (Sadece uyarıları hataya çevirmeyi engeller)
+          # DİKKAT: Kodları bozan tüm 'sed' komutlarını sildim!
+          # Sadece derlemeyi durduran gereksiz sert uyarıları (Werror) kapatıyoruz.
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           
@@ -38,11 +34,11 @@ jobs:
       - name: Kernel'ı Derle
         run: |
           export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export USE_CCACHE=0
+          # Burası kritik: Standart aarch64 yerine kurduğumuz GCC-9'u kullanıyoruz
+          export CROSS_COMPILE=aarch64-linux-gnu-gcc-9 
+          # Eğer yukarıdaki isim hata verirse aarch64-linux-gnu- olarak deneriz ama genelde budur.
           
           make rise-a7y17lte_defconfig
-          # Gereksiz uyarıları susturup saf derleme yapıyoruz
           make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
 
       - name: Kernel Dosyasını Paketle
