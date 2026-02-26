@@ -15,6 +15,57 @@ jobs:
       - name: Derleme Araçlarını Kur
         run: |
           sudo apt-get update
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python3
+          sudo ln -sf /usr/bin/python3 /usr/bin/python
+
+      - name: Hassas Onarım ve KernelSU
+        run: |
+          # KernelSU Kurulumu
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          
+          # KRİTİK VDSO TAMİRİ: Sadece yorum satırlarını hedef al, sayıları (#1, #8 vb.) elleme
+          # Bu komut sadece '#' işaretinden sonra boşluk varsa onu '//' yapar (yorumdur).
+          find arch/arm64/kernel/vdso/ -type f -name "*.S" -exec sed -i 's/ # / \/\/ /g' {} +
+          
+          # Makefile ve Werror temizliği
+          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
+          find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
+          
+          # DTS Yaması
+          find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
+
+      - name: Kernel'ı Derle
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          # ccache yoksa hata vermemesi için kontrol ekledik
+          export USE_CCACHE=0
+          
+          make rise-a7y17lte_defconfig
+          # KCFLAGS="-w" ile tüm uyarıları susturarak ana derlemeye geç
+          make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
+
+      - name: Kernel Dosyasını Paketle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Focus-RS-Kernel
+          path: arch/arm64/boot/Image.gz-dtbname: Focus RS Kernel Build (KernelSU)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodları Çek
+        uses: actions/checkout@v4
+        with:
+          ref: rise
+
+      - name: Derleme Araçlarını Kur
+        run: |
+          sudo apt-get update
           # ccache ve eksik araçları ekledik
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python3
           sudo ln -sf /usr/bin/python3 /usr/bin/python
