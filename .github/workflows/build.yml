@@ -1,107 +1,62 @@
-name: Focus RS Kernel Build (Stable)
+name: Focus-RS-Final-Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # 22.04: Python 2 ve GCC 9'u sorunsuz barındırabilen en hızlı stabil liman.
+    # 22.04: Kuyrukta bekletmez (Hızlı) ve Python 2'yi hala destekler (Uyumlu)
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. Kaynak Kodları Hazırla
+      - name: 1. Kaynak Kodları Çek
         uses: actions/checkout@v4
         with:
           ref: rise
 
-      - name: 2. Fabrika Aletlerini Kur (Hata Payı Sıfır)
+      - name: 2. Sistemi ve Eksik Parçaları Hazırla
         run: |
           sudo apt-get update
-          # Gerekli tüm kütüphaneleri ve GCC 9 serisini kuruyoruz
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2 python3
+          # Gereksiz araçları (ccache gibi) pasif bırakıp doğrudan ana silahlarımızı kuruyoruz
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2
           
-          # Python 2'yi sistemde 'python' komutuna mühürle (Eski scriptler için şart)
+          # Python 2'yi sistemde 'python' olarak mühürle (Hayati önemde)
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           
-          # Derleyici yollarını sisteme garanti altına alarak tanıt
+          # Derleyicinin yolunu PATH'e zorla ekle (Bulunamadı hatasını bitirir)
           echo "/usr/bin" >> $GITHUB_PATH
 
       - name: 3. KernelSU ve Kod Onarımı
         run: |
-          # KernelSU Entegrasyonu
+          # KernelSU kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # Derlemeyi durduran 'Uyarıları Hataya Çevir' (Werror) özelliğini tüm alt dosyalarda pasif yap
+          # Derlemeyi durduran 'Werror' ve 'implicit declaration' katılıklarını gevşetiyoruz
+          # Böylece yazım hataları yüzünden motor durmaz, sadece uyarı verir
           find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           
-          # DTS Yaması: Cihazın güç ve ekran yönetimi için çakışan dtsi dosyasını temizle
+          # Cihaz uyumluluğu için hatalı DTS dosyasını kaldır
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
-      - name: 4. Motoru Ateşle (Ccache Olmadan - Doğrudan Derleme)
+      - name: 4. Motoru Ateşle (Doğrudan GCC 9 İle)
         run: |
-          # Ortam değişkenlerini kesin ve net yollarla tanımla
           export ARCH=arm64
+          # Derleyici yolunu hem export hem de make içinde net olarak belirtiyoruz
           export CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9
           
-          # Hatalı ccache kullanımını engellemek için doğrudan derleyiciyi hedef alıyoruz
-          # Konfigürasyonu oluştur
-          make rise-a7y17ltename: Focus RS Kernel Build (Final Precision)
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    # 22.04: Hız ve Python2 desteği için en dengeli sürüm
-    runs-on: ubuntu-22.04
-    
-    steps:
-      - name: Kodları Çek
-        uses: actions/checkout@v4
-        with:
-          ref: rise
-
-      - name: Sistemi ve Bağımlılıkları Hazırla
-        run: |
-          sudo apt-get update
-          # Temel derleme araçları ve GCC 9 serisi
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2 python3
+          # Ccache'i tamamen devre dışı bırakıyoruz (Hata vermemesi için)
+          export USE_CCACHE=0
           
-          # Python 2'yi sistem geneline 'python' olarak mühürle
-          sudo ln -sf /usr/bin/python2 /usr/bin/python
-          
-          # Ccache hatasını engellemek için derleyiciyi PATH'e açıkça ekle
-          echo "/usr/bin" >> $GITHUB_PATH
-
-      - name: KernelSU ve Kod Temizliği
-        run: |
-          # KernelSU entegrasyonu
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-          
-          # Derlemeyi durduran katı uyarıları kapat (Werror = Error olmasın)
-          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
-          find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
-          
-          # DTS Yaması: Cihazın açılması için gereken dtsi temizliği
-          find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
-
-      - name: Kernel Derleme (Focus RS Edition)
-        run: |
-          # Değişkenleri yerel olarak tanımla (PATH karmaşasını önler)
-          export ARCH=arm64
-          export CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9
-          
-          # Konfigürasyonu yükle
+          # Konfigürasyonu hazırla
           make rise-a7y17lte_defconfig
           
-          # Ccache'i bypass et ve doğrudan derle (Hata payını sıfıra indirir)
-          # KCFLAGS="-w" ile tüm yazım uyarılarını sustur, sadece sonuca odaklan
+          # Derlemeye başla: Gereksiz tüm uyarıları sustur (-w)
           make -j$(nproc) CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9 KCFLAGS="-w" KCPPFLAGS="-w"
 
-      - name: Kernel'ı Teslim Et
+      - name: 5. Kernel Dosyasını Paketle
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Focus-RS-Kernel-Final
+          name: Focus-RS-Kernel-Result
           path: arch/arm64/boot/Image.gz-dtb
