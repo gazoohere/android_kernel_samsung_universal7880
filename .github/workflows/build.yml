@@ -46,4 +46,52 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Focus-RS-Kernel
+          path: arch/arm64/boot/Image.gz-dtbname: Focus RS Kernel Build (KernelSU)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04 # Stabilite için 20.04 kullanıyoruz
+    steps:
+      - name: Kodları Çek
+        uses: actions/checkout@v4
+        with:
+          ref: rise
+
+      - name: Derleme Araçlarını ve CCACHE'i Kur
+        run: |
+          sudo apt-get update
+          # ccache'i ve python'u özellikle ekledik!
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+
+      - name: Otomatik Tamir ve Temizlik
+        run: |
+          # KernelSU Kurulumu
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          
+          # Yazım hatasını düzeltiyoruz (-implicit -> -Wimplicit)
+          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
+          
+          # Netfilter ve DTS yamaları
+          find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
+          find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
+
+      - name: Kernel'ı Derle
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          
+          # Ekranda gördüğümüz KESİN config adını kullanıyoruz!
+          make rise-a7y17lte_defconfig
+          
+          # Derlemeyi başlat
+          make -j$(nproc) KCFLAGS="-w"
+
+      - name: Kernel Dosyasını Paketle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Focus-RS-Kernel
           path: arch/arm64/boot/Image.gz-dtb
