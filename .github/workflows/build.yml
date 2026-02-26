@@ -23,23 +23,24 @@ jobs:
           # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # HATA GİDERME: Loglarda çıkan tüm yazım hatalarını (junk, implicit vb.) topluca düzelt
+          # KRİTİK TAMİR: Ekran görüntüsündeki 'gettimeofday.S' ve tüm '.S' hatalarını çözer.
+          # Yorum karakterlerini modern derleyicinin anlayacağı şekle çeviriyoruz.
           find . -type f -name "*.S" -exec sed -i 's/ #/;/g' {} +
-          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
+          find . -type f -name "*.S" -exec sed -i 's/\/\//;/g' {} +
           
-          # Derleyiciyi sustur: Hataları görmezden gel, sadece devam et
+          # Makefile uyarılarını ve sert hataları (Werror) kapat
+          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           
-          # DTS Yaması
+          # DTS Yaması (Eksik dosya hatasını önler)
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
       - name: Kernel'ı Derle
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          # Config dosyasını hazırla
           make rise-a7y17lte_defconfig
-          # KCFLAGS="-w" (Tüm uyarıları kapat) ve KCPPFLAGS (Önişlemci hatalarını sustur)
+          # KCFLAGS="-w" (Hataları sustur) ve KCPPFLAGS (Önişlemciyi sustur)
           make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
 
       - name: Kernel Dosyasını Paketle
