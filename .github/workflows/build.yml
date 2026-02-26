@@ -1,4 +1,4 @@
-name: Focus-RS-Absolute-Final
+name: Focus-RS-Final-V28
 
 on:
   workflow_dispatch:
@@ -8,51 +8,49 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. Kaynak Kodları Çek
+      - name: Kodları Çek
         uses: actions/checkout@v4
         with:
           ref: rise
 
-      - name: 2. Sistemi Donat (GCC 9, Python 2 ve ccache)
+      - name: Sistemi Hazırla
         run: |
           sudo apt-get update
-          # ccache dahil tüm eksik parçaları en baştan kuruyoruz
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2 ccache
           
-          # Python 2'yi sistemin kalbine mühürle
+          # Python 2'yi varsayılan yap
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           
-          # Ccache hatasını bitiren hamle: Derleyiciyi ccache olarak sisteme tanıt
-          sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/bin/ccache
-          sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/ccache
+          # KRİTİK: ccache hatasını bitirmek için sistemi 'ccache' varmış gibi kandırıyoruz
+          # Derleyiciyi ccache adıyla sistem yollarına kopyalıyoruz
+          sudo cp /usr/bin/aarch64-linux-gnu-gcc-9 /usr/bin/ccache
+          sudo cp /usr/bin/aarch64-linux-gnu-gcc-9 /usr/local/bin/ccache
 
-      - name: 3. KernelSU ve Kod Onarımı
+      - name: KernelSU ve Yama
         run: |
-          # KernelSU kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # Derlemeyi durduran Werror (hataya zorlama) kurallarını tüm dizinlerde esnet
+          # Hataları durduran Werror kurallarını esnet
           find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           
-          # Cihaz uyumluluğu için hatalı DTS dosyasını temizle
+          # DTS Temizliği
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
-      - name: 4. Motoru Ateşle (Tam Yol Tanımlama)
+      - name: Derleme
         run: |
           export ARCH=arm64
-          # Derleyiciyi tam adresle veriyoruz, ccache hatası artık imkansız
+          # Derleyiciyi tam yol ile vererek Makefile'ı zorluyoruz
           export CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9
           
-          # Konfigürasyonu yükle
           make rise-a7y17lte_defconfig
           
-          # Derleme: -w ile gereksiz uyarıları sustur, tam güç çalış
+          # Derlemeyi ateşle: CROSS_COMPILE'ı burada tekrar tanımlamak en güvenlisidir
           make -j$(nproc) CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9 KCFLAGS="-w" KCPPFLAGS="-w"
 
-      - name: 5. Focus RS Kernel'ı Paketle
+      - name: Dosyayı Yükle
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Focus-RS-Kernel-Final
+          name: Focus-RS-Kernel
           path: arch/arm64/boot/Image.gz-dtb
