@@ -1,54 +1,59 @@
-name: Focus RS Kernel Build (KernelSU)
+name: Focus RS Kernel Build (Final Precision)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # En hızlı makinelerden biri, kuyruk beklemezsin
+    # 22.04: Hız ve Python2 desteği için en dengeli sürüm
     runs-on: ubuntu-22.04
+    
     steps:
       - name: Kodları Çek
         uses: actions/checkout@v4
         with:
           ref: rise
 
-      - name: Derleme Araçlarını Kur (GCC 9 & Python 2)
+      - name: Sistemi ve Bağımlılıkları Hazırla
         run: |
           sudo apt-get update
-          # Ubuntu 22.04 üzerinde Python 2 ve GCC 9'u eksiksiz kuruyoruz
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2 python3
-          # Kernel scriptleri için python2'yi ana yol olarak tanımlıyoruz
+          # Temel derleme araçları ve GCC 9 serisi
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2 python3
+          
+          # Python 2'yi sistem geneline 'python' olarak mühürle
           sudo ln -sf /usr/bin/python2 /usr/bin/python
+          
+          # Ccache hatasını engellemek için derleyiciyi PATH'e açıkça ekle
+          echo "/usr/bin" >> $GITHUB_PATH
 
-      - name: KernelSU ve Yapılandırma
+      - name: KernelSU ve Kod Temizliği
         run: |
-          # KernelSU ana kurulumu
+          # KernelSU entegrasyonu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # DİKKAT: Kodların orijinalliğini bozan tüm 'sed' komutlarını sildim.
-          # Sadece derlemeyi durdurabilecek 'uyarıları hataya çevirme' özelliğini esnetiyoruz.
+          # Derlemeyi durduran katı uyarıları kapat (Werror = Error olmasın)
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           
-          # DTS Yaması (Focus RS ekran ve güç yönetimi için kritik)
+          # DTS Yaması: Cihazın açılması için gereken dtsi temizliği
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
-      - name: Kernel'ı Derle (Focus RS Edition)
+      - name: Kernel Derleme (Focus RS Edition)
         run: |
+          # Değişkenleri yerel olarak tanımla (PATH karmaşasını önler)
           export ARCH=arm64
-          # Kernelin dilinden anlayan GCC 9'u tam yol göstererek çağırıyoruz
-          export CROSS_COMPILE=aarch64-linux-gnu-gcc-9
+          export CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9
           
-          # Konfigürasyonu hazırla
+          # Konfigürasyonu yükle
           make rise-a7y17lte_defconfig
           
-          # Derleme ateşlemesi: -w bayrağı ile gereksiz yazım uyarılarını susturuyoruz
-          make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
+          # Ccache'i bypass et ve doğrudan derle (Hata payını sıfıra indirir)
+          # KCFLAGS="-w" ile tüm yazım uyarılarını sustur, sadece sonuca odaklan
+          make -j$(nproc) CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9 KCFLAGS="-w" KCPPFLAGS="-w"
 
-      - name: Kernel Dosyasını Paketle (Artifact)
+      - name: Kernel'ı Teslim Et
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Focus-RS-Kernel
-          # Derlenen motor bloğunun tam adresi
+          name: Focus-RS-Kernel-Final
           path: arch/arm64/boot/Image.gz-dtb
