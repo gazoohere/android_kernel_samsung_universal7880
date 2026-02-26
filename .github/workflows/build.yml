@@ -12,16 +12,20 @@ jobs:
         with:
           ref: rise
 
-      - name: Derleme Araçlarını ve ccache Kur
+      - name: Derleme Araçlarını Kur
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache
-          # ccache'i sistem yoluna ekleyelim
-          sudo ln -s /usr/bin/ccache /usr/local/bin/ccache
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev
 
-      - name: KernelSU ve Otomatik Onarımlar
+      - name: Otomatik Cerrahi Müdahale ve KernelSU
         run: |
+          # KernelSU Kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          
+          # HATA 1: Makefile içindeki yazım hatasını düzeltiyoruz
+          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
+          
+          # HATA 2: Daha önce bizi yoran Netfilter/DTS hatalarını temizle
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
@@ -29,9 +33,14 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          # ccache kullanımını devre dışı bırakalım (hata vermemesi için en garantisi bu)
-          make USE_CCACHE=0 exynos7880-a7y17lte_eur_open_defconfig
-          make -j$(nproc) USE_CCACHE=0 KCFLAGS="-w"
+          
+          # Hangi config'in olduğunu bulup otomatik seçiyoruz
+          CONF=$(ls arch/arm64/configs/ | grep -i "eur_open" | head -n 1)
+          echo "Kullanılan Config: $CONF"
+          make $CONF
+          
+          # Derlemeye başla
+          make -j$(nproc) KCFLAGS="-w"
 
       - name: Kernel Dosyasını Paketle
         uses: actions/upload-artifact@v4
