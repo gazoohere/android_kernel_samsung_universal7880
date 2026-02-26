@@ -5,44 +5,47 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 22.04 hem hızlıdır hem de eski paketleri destekler
+    runs-on: ubuntu-22.04
     steps:
       - name: Kodları Çek
-        uses: actions/checkout@v4
+        uses: checkout@v4
         with:
           ref: rise
 
-      - name: Eski Tip Derleyiciyi ve Python'u Hazırla
+      - name: Gerekli Aletleri Kur (GCC 9 ve Python 2)
         run: |
           sudo apt-get update
-          # GCC 9 (eski ama uyumlu) ve Python 2 kurulumu
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2
+          # Ubuntu 22.04'te bu paketler hala mevcut!
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev ccache python2 python3
+          # Sistemi kandırmıyoruz, python2'yi gerçek haliyle tanıtıyoruz
           sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-      - name: KernelSU Kurulumu
+      - name: KernelSU ve Temizlik
         run: |
+          # KernelSU kurulumu
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
-          # DİKKAT: Kodları bozan tüm 'sed' komutlarını sildim!
-          # Sadece derlemeyi durduran gereksiz sert uyarıları (Werror) kapatıyoruz.
+          # HATA VEREN TÜM KOD DEĞİŞİKLİKLERİ İPTAL! Kodlar orijinal kalacak.
+          # Sadece derlemeyi durduran gereksiz sert kuralları esnetiyoruz.
           find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           find . -type f -name "Kbuild" -o -name "Makefile" | xargs sed -i 's/-Werror//g'
           
-          # DTS Yaması
+          # DTS Yaması (Senin cihaz için kritik)
           find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
 
-      - name: Kernel'ı Derle
+      - name: Kernel'ı Ateşle (GCC 9 ile)
         run: |
           export ARCH=arm64
-          # Burası kritik: Standart aarch64 yerine kurduğumuz GCC-9'u kullanıyoruz
-          export CROSS_COMPILE=aarch64-linux-gnu-gcc-9 
-          # Eğer yukarıdaki isim hata verirse aarch64-linux-gnu- olarak deneriz ama genelde budur.
+          # Modern derleyici yerine bu kernelin dilinden anlayan GCC 9'u kullanıyoruz
+          export CROSS_COMPILE=aarch64-linux-gnu-gcc-9
           
           make rise-a7y17lte_defconfig
+          # Hataları gizle, sadece işine odaklan
           make -j$(nproc) KCFLAGS="-w" KCPPFLAGS="-w"
 
-      - name: Kernel Dosyasını Paketle
-        uses: actions/upload-artifact@v4
+      - name: Focus RS Hazır!
+        uses: upload-artifact@v4
         with:
           name: Focus-RS-Kernel
           path: arch/arm64/boot/Image.gz-dtb
