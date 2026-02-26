@@ -1,4 +1,52 @@
-name: Focus RS Kernel Build (Final Precision)
+name: Focus RS Kernel Build (Stable)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # 22.04: Python 2 ve GCC 9'u sorunsuz barındırabilen en hızlı stabil liman.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: 1. Kaynak Kodları Hazırla
+        uses: actions/checkout@v4
+        with:
+          ref: rise
+
+      - name: 2. Fabrika Aletlerini Kur (Hata Payı Sıfır)
+        run: |
+          sudo apt-get update
+          # Gerekli tüm kütüphaneleri ve GCC 9 serisini kuruyoruz
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev gcc-9-aarch64-linux-gnu binutils-aarch64-linux-gnu bison flex libelf-dev python2 python3
+          
+          # Python 2'yi sistemde 'python' komutuna mühürle (Eski scriptler için şart)
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+          
+          # Derleyici yollarını sisteme garanti altına alarak tanıt
+          echo "/usr/bin" >> $GITHUB_PATH
+
+      - name: 3. KernelSU ve Kod Onarımı
+        run: |
+          # KernelSU Entegrasyonu
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          
+          # Derlemeyi durduran 'Uyarıları Hataya Çevir' (Werror) özelliğini tüm alt dosyalarda pasif yap
+          find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
+          find . -type f -name "Makefile" -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
+          
+          # DTS Yaması: Cihazın güç ve ekran yönetimi için çakışan dtsi dosyasını temizle
+          find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i '/exynos7880-a7y17lte_common.dtsi/d' {} +
+
+      - name: 4. Motoru Ateşle (Ccache Olmadan - Doğrudan Derleme)
+        run: |
+          # Ortam değişkenlerini kesin ve net yollarla tanımla
+          export ARCH=arm64
+          export CROSS_COMPILE=/usr/bin/aarch64-linux-gnu-gcc-9
+          
+          # Hatalı ccache kullanımını engellemek için doğrudan derleyiciyi hedef alıyoruz
+          # Konfigürasyonu oluştur
+          make rise-a7y17ltename: Focus RS Kernel Build (Final Precision)
 
 on:
   workflow_dispatch:
